@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
-        /* --- SECURE PROTOCOL STYLING --- */
+        /* --- STYLING --- */
         :root {
             --bg-color: #050508;
             --card-bg: rgba(20, 25, 35, 0.85);
@@ -37,6 +37,28 @@
 
         #bgCanvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
 
+        /* OVERLAY FOR AUDIO PERMISSION */
+        #startOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 9999;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: opacity 0.5s;
+        }
+        .start-btn {
+            border: 1px solid var(--accent);
+            padding: 15px 40px;
+            border-radius: 30px;
+            color: var(--accent);
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: bold;
+            background: rgba(0, 255, 157, 0.1);
+            box-shadow: 0 0 20px rgba(0, 255, 157, 0.2);
+            animation: pulse 2s infinite;
+        }
+
         header {
             padding: 15px 25px;
             display: flex; justify-content: space-between; align-items: center;
@@ -49,7 +71,7 @@
         .brand { font-family: 'JetBrains Mono', monospace; font-weight: 700; letter-spacing: -0.5px; font-size: 1rem; display: flex; align-items: center; gap: 10px; }
         .secure-badge { background: rgba(0, 255, 157, 0.05); color: var(--accent); padding: 5px 10px; border-radius: 4px; border: 1px solid rgba(0, 255, 157, 0.2); font-size: 0.6rem; font-weight: 700; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px; }
 
-        .main-container { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; position: relative; width: 100%; }
+        .main-container { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; position: relative; width: 100%; opacity: 0; transition: opacity 1s;}
 
         .security-card {
             width: 100%; max-width: 450px;
@@ -62,7 +84,6 @@
             backdrop-filter: var(--glass);
             position: relative;
             overflow: hidden;
-            animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .security-card::before { content:''; position: absolute; top:0; left:0; width:100%; height:2px; background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: scan 3s infinite linear; }
 
@@ -98,9 +119,9 @@
 
         .loader { display: inline-block; width: 24px; height: 24px; border: 2px solid rgba(255, 255, 255, 0.1); border-left-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes blink { 50% { opacity: 0; } }
         @keyframes scan { 0% {top:0; opacity: 0.5;} 50% {top:100%; opacity: 0.2;} 100% {top:0; opacity: 0.5;} }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
         
         .access-denied { border-color: var(--danger) !important; animation: shake 0.5s ease; }
         .access-denied .key-output { color: var(--danger) !important; text-shadow: 0 0 15px rgba(255,0,85,0.4); }
@@ -110,16 +131,23 @@
         .access-denied .social-grid, .access-denied .admin-link, .access-denied .btn-generate { opacity: 0.3; pointer-events: none; }
     </style>
 </head>
-<body onclick="enableAudio()">
+<body>
 
     <canvas id="bgCanvas"></canvas>
+
+    <!-- START OVERLAY TO FIX AUDIO -->
+    <div id="startOverlay" onclick="startSystem()">
+        <div style="font-size: 3rem; margin-bottom: 20px; color: var(--accent);"><i class="fas fa-fingerprint"></i></div>
+        <div class="start-btn">INITIALIZE SYSTEM</div>
+        <div style="margin-top: 15px; font-size: 0.7rem; color: #666;">TAP TO SECURE CONNECTION</div>
+    </div>
 
     <header>
         <div class="brand"><i class="fas fa-shield-alt" style="color:var(--accent)"></i> Dynamon Gamer Gateway</div>
         <div class="secure-badge"><i class="fas fa-lock"></i> SSL ENCRYPTED</div>
     </header>
 
-    <div class="main-container">
+    <div class="main-container" id="mainContainer">
         
         <div class="security-card" id="mainCard">
             <h2 id="titleText">GENERATING KEY</h2>
@@ -143,7 +171,7 @@
 
         <div class="terminal" id="terminalLog">
             <div class="term-line">> Initializing Dynamon Gamer v8.1 protocol...</div>
-            <div class="term-line">> Checking environment integrity...</div>
+            <div class="term-line">> Waiting for user interaction...</div>
             <div class="term-cursor"></div>
         </div>
 
@@ -153,13 +181,16 @@
 
     <script>
         // ===============================================
-        // 1. ENCRYPTED CONFIGURATION
+        // CONFIGURATION
         // ===============================================
+        
+        // !!! IMPORTANT: CHANGE THIS TO 'false' WHEN YOU PUBLISH THE LINK !!!
+        // If true, it skips the check so you can generate keys easily.
+        const TEST_MODE = true; 
+
         const DB_URL = "https://gateway-260ec-default-rtdb.firebaseio.com/";
         const PREFIX = "DP-";
-        
-        // BASE64 ENCRYPTED SECRET (Decodes to: dp_secure_2026_v8)
-        const _0xAuth = "ZHBfc2VjdXJlXzIwMjZfdjg="; 
+        const _0xAuth = "ZHBfc2VjdXJlXzIwMjZfdjg="; // "dp_secure_2026_v8"
         
         const LOGS = document.getElementById('terminalLog');
         const keyDisplay = document.getElementById('displayedKey');
@@ -168,16 +199,26 @@
         
         let audioEnabled = false;
 
-        // Force Audio Context on First Interaction
-        function enableAudio() {
-            if(!audioEnabled && 'speechSynthesis' in window) {
+        // Triggered by the Overlay Click
+        async function startSystem() {
+            const overlay = document.getElementById('startOverlay');
+            overlay.style.opacity = '0';
+            setTimeout(() => overlay.style.display = 'none', 500);
+            
+            // Show Main Container
+            document.getElementById('mainContainer').style.opacity = '1';
+
+            // Enable Audio
+            if ('speechSynthesis' in window) {
                 audioEnabled = true;
-                window.speechSynthesis.resume();
+                window.speechSynthesis.resume(); // Wake up engine
             }
+
+            initParticles();
+            runSecurityChecks();
         }
 
-        window.onload = async function() {
-            initParticles(); 
+        async function runSecurityChecks() {
             logSystem("Connection established with host.");
             
             const params = new URLSearchParams(window.location.search);
@@ -187,13 +228,21 @@
 
             await delay(800); 
 
+            // IF TEST_MODE IS TRUE, WE BYPASS THE ERROR CHECKS
+            if (TEST_MODE) {
+                logSystem("WARN: TEST MODE ACTIVE. BYPASSING CHECKS.");
+                await processKeyGeneration();
+                return;
+            }
+
+            // NORMAL SECURITY CHECKS
             if (userAuth !== expectedAuth) {
                 logSystem("ERR: Auth token mismatch.");
-                speakSystem("Do not try to bypass the system"); // BYPASS DETECTED
+                speakSystem("Do not try to bypass the system"); 
                 denyAccess("UNAUTHORIZED_REQUEST");
             } else if (isRefresh) {
                 logSystem("WARN: Refresh token replay attack detected.");
-                speakSystem("Do not try to bypass the system"); // REFRESH DETECTED
+                speakSystem("Do not try to bypass the system");
                 denyAccess("SESSION_TOKEN_EXPIRED");
             } else {
                 logSystem("Decrypting Authorization Token...");
@@ -201,7 +250,7 @@
                 logSystem("Credentials verified. Access Granted.");
                 await processKeyGeneration();
             }
-        };
+        }
 
         async function processKeyGeneration() {
             const oldKey = localStorage.getItem('dp_active_key');
@@ -257,7 +306,6 @@
             logSystem("Ready for user input.");
             localStorage.setItem('dp_active_key', key);
             
-            // --- SUCCESS AUDIO ---
             speakSystem("Key generated successfully");
             showToast();
         }
@@ -287,22 +335,16 @@
             document.body.removeChild(ta);
         }
 
-        // --- SIRI VOICE LOGIC ---
         function speakSystem(text) {
             if ('speechSynthesis' in window) {
                 const synth = window.speechSynthesis;
-                
-                // Workaround for Chrome voice loading
-                let voices = synth.getVoices();
-                if(!voices.length) {
-                    setTimeout(() => speakSystem(text), 100);
-                    return;
-                }
+                // Cancel previous speech to prevent queue buildup
+                synth.cancel();
 
+                let voices = synth.getVoices();
                 const ut = new SpeechSynthesisUtterance(text);
                 
-                // HUNT FOR SIRI / FEMALE VOICE
-                // Priority: "Samantha" (iOS/Mac Siri), "Google US English" (Android), "Zira" (Windows)
+                // Attempt to find a better voice
                 const targetVoice = voices.find(v => 
                     v.name.includes("Samantha") || 
                     v.name.includes("Google US English") || 
@@ -311,8 +353,6 @@
                 );
 
                 if(targetVoice) ut.voice = targetVoice;
-                
-                // Helper to sound slightly more robotic/assistant-like
                 ut.rate = 0.9;
                 ut.pitch = 1.1;
                 ut.volume = 1;
