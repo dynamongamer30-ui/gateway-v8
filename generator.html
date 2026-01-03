@@ -135,7 +135,7 @@
 
     <canvas id="bgCanvas"></canvas>
 
-    <!-- START OVERLAY TO FIX AUDIO -->
+    <!-- START OVERLAY -->
     <div id="startOverlay" onclick="startSystem()">
         <div style="font-size: 3rem; margin-bottom: 20px; color: var(--accent);"><i class="fas fa-fingerprint"></i></div>
         <div class="start-btn">INITIALIZE SYSTEM</div>
@@ -184,13 +184,12 @@
         // CONFIGURATION
         // ===============================================
         
-        // !!! IMPORTANT: CHANGE THIS TO 'false' WHEN YOU PUBLISH THE LINK !!!
-        // If true, it skips the check so you can generate keys easily.
-        const TEST_MODE = true; 
+        // This is "dynamon_gamer_is_best" encoded in Base64
+        const REQUIRED_AUTH = "ZHluYW1vbl9nYW1lcl9pc19iZXN0"; 
 
+        // Database URL
         const DB_URL = "https://gateway-260ec-default-rtdb.firebaseio.com/";
         const PREFIX = "DP-";
-        const _0xAuth = "ZHBfc2VjdXJlXzIwMjZfdjg="; // "dp_secure_2026_v8"
         
         const LOGS = document.getElementById('terminalLog');
         const keyDisplay = document.getElementById('displayedKey');
@@ -199,19 +198,15 @@
         
         let audioEnabled = false;
 
-        // Triggered by the Overlay Click
         async function startSystem() {
             const overlay = document.getElementById('startOverlay');
             overlay.style.opacity = '0';
             setTimeout(() => overlay.style.display = 'none', 500);
-            
-            // Show Main Container
             document.getElementById('mainContainer').style.opacity = '1';
 
-            // Enable Audio
             if ('speechSynthesis' in window) {
                 audioEnabled = true;
-                window.speechSynthesis.resume(); // Wake up engine
+                window.speechSynthesis.resume();
             }
 
             initParticles();
@@ -220,50 +215,69 @@
 
         async function runSecurityChecks() {
             logSystem("Connection established with host.");
-            
+            await delay(500);
+
+            // 1. GET URL PARAMS
             const params = new URLSearchParams(window.location.search);
             const userAuth = params.get('auth');
-            const expectedAuth = atob(_0xAuth);
-            const isRefresh = (window.performance && window.performance.getEntriesByType("navigation")[0]?.type === 'reload');
 
-            await delay(800); 
+            // 2. CHECK REFRESH (Navigation Type)
+            const navEntries = window.performance.getEntriesByType("navigation");
+            const isReload = navEntries.length > 0 && navEntries[0].type === "reload";
 
-            // IF TEST_MODE IS TRUE, WE BYPASS THE ERROR CHECKS
-            if (TEST_MODE) {
-                logSystem("WARN: TEST MODE ACTIVE. BYPASSING CHECKS.");
-                await processKeyGeneration();
+            // 3. CHECK SESSION (Prevents Back Button usage)
+            const sessionActive = sessionStorage.getItem('dp_key_session');
+
+            // --- SECURITY LOGIC ---
+
+            if (isReload) {
+                logSystem("ERR: Reload detected. Dropping connection.");
+                denyAccess("SESSION_EXPIRED");
                 return;
             }
 
-            // NORMAL SECURITY CHECKS
-            if (userAuth !== expectedAuth) {
-                logSystem("ERR: Auth token mismatch.");
-                speakSystem("Do not try to bypass the system"); 
-                denyAccess("UNAUTHORIZED_REQUEST");
-            } else if (isRefresh) {
-                logSystem("WARN: Refresh token replay attack detected.");
-                speakSystem("Do not try to bypass the system");
-                denyAccess("SESSION_TOKEN_EXPIRED");
-            } else {
-                logSystem("Decrypting Authorization Token...");
-                await delay(400); 
-                logSystem("Credentials verified. Access Granted.");
-                await processKeyGeneration();
+            if (userAuth !== REQUIRED_AUTH) {
+                logSystem("ERR: Handshake signature mismatch.");
+                logSystem("WARN: Link does not contain valid token.");
+                denyAccess("INVALID_LINK");
+                return;
             }
+
+            if (sessionActive) {
+                logSystem("ERR: Token already consumed.");
+                denyAccess("TOKEN_USED");
+                return;
+            }
+
+            // --- IF SUCCESS ---
+            
+            logSystem("Authenticating user credentials...");
+            await delay(600);
+            logSystem("Access Granted. Generating Key...");
+            
+            // Mark session as used
+            sessionStorage.setItem('dp_key_session', 'true');
+            
+            await processKeyGeneration();
         }
 
         async function processKeyGeneration() {
             const oldKey = localStorage.getItem('dp_active_key');
-            if (oldKey) {
-                logSystem(`Revoking previous token: ${oldKey.substring(0,6)}...`);
-                await deleteOldKey(oldKey);
-            }
-
+            
+            // Generate Random Key
             const rnd = Math.random().toString(36).substring(2, 7).toUpperCase();
             const newKey = PREFIX + rnd;
+            
             logSystem(`Generating new encryption token...`);
             await delay(600);
+            
+            // Save to Database
             await uploadKey(newKey);
+            
+            // Clean up previous key from DB if it exists (Optional: removes old spam)
+            if (oldKey) {
+                deleteOldKey(oldKey); 
+            }
         }
 
         async function uploadKey(key) {
@@ -271,6 +285,8 @@
                 logSystem("Handshaking with firebase database node...");
                 const cleanUrl = DB_URL.endsWith('/') ? DB_URL : DB_URL + '/';
                 const target = `${cleanUrl}ValidKeys/${key}.json`;
+                
+                // Key Valid for 24 Hours
                 const keyData = { "Hours": 24 };
 
                 await fetch(target, {
@@ -292,8 +308,7 @@
         async function deleteOldKey(key) {
             try {
                 const cleanUrl = DB_URL.endsWith('/') ? DB_URL : DB_URL + '/';
-                await fetch(`${cleanUrl}ValidKeys/${key}.json`, { method: 'DELETE' });
-                logSystem("Previous session token purged.");
+                fetch(`${cleanUrl}ValidKeys/${key}.json`, { method: 'DELETE' });
             } catch(e) {}
         }
 
@@ -314,16 +329,26 @@
             mainCard.classList.add('access-denied');
             document.getElementById('titleText').innerText = "ACCESS DENIED";
             document.getElementById('titleText').style.color = "#ff0055";
-            keyDisplay.innerText = "BLOCKED";
+            
+            let userMsg = "INVALID";
+            if(reason === "SESSION_EXPIRED") userMsg = "DO NOT REFRESH";
+            if(reason === "INVALID_LINK") userMsg = "INVALID LINK";
+            if(reason === "TOKEN_USED") userMsg = "ALREADY USED";
+            
+            keyDisplay.innerText = userMsg;
+            keyDisplay.style.fontSize = "1.2rem";
+            
             statusText.innerText = `Security Flag: ${reason}`;
             statusText.style.color = "#ff0055";
             logSystem(`SECURITY ALERT: ${reason}`);
             logSystem("Terminating session connection...");
+            speakSystem("Access denied");
         }
 
         function copyKey() {
             const txt = keyDisplay.innerText;
-            if(txt.length < 5 || txt.includes("BLOCK") || txt.includes("...")) return;
+            if(txt.length < 5 || txt.includes("INVALID") || txt.includes("REFRESH") || txt.includes("USED") || txt.includes("...")) return;
+            
             const ta = document.createElement("textarea");
             ta.value = txt; ta.style.position = "fixed"; ta.style.left = "-9999px";
             document.body.appendChild(ta); ta.focus(); ta.select();
@@ -338,25 +363,12 @@
         function speakSystem(text) {
             if ('speechSynthesis' in window) {
                 const synth = window.speechSynthesis;
-                // Cancel previous speech to prevent queue buildup
                 synth.cancel();
-
                 let voices = synth.getVoices();
                 const ut = new SpeechSynthesisUtterance(text);
-                
-                // Attempt to find a better voice
-                const targetVoice = voices.find(v => 
-                    v.name.includes("Samantha") || 
-                    v.name.includes("Google US English") || 
-                    v.name.includes("Zira") ||
-                    (v.name.includes("English") && v.name.includes("Female"))
-                );
-
+                const targetVoice = voices.find(v => v.name.includes("English") && v.name.includes("Female"));
                 if(targetVoice) ut.voice = targetVoice;
-                ut.rate = 0.9;
-                ut.pitch = 1.1;
-                ut.volume = 1;
-
+                ut.rate = 0.9; ut.pitch = 1.1; ut.volume = 1;
                 synth.speak(ut);
             }
         }
