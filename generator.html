@@ -3,6 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- ANTI-CACHE META TAGS (Forces browser to load new version) -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    
     <title>Secure Gateway | Dynamon Gamer</title>
     <meta name="theme-color" content="#000000">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -184,7 +189,6 @@
         // CONFIGURATION
         // ===============================================
         
-        // Database URL
         const DB_URL = "https://gateway-260ec-default-rtdb.firebaseio.com/";
         const PREFIX = "DP-";
         
@@ -214,28 +218,29 @@
             logSystem("Connection established with host.");
             await delay(500);
 
-            // 1. GET URL QUERY STRING
-            const queryString = window.location.search;
+            // 1. GET URL DATA
+            // We check specifically for query parameters (?)
+            const rawUrl = window.location.href;
+            const hasQueryParams = rawUrl.includes("?") && rawUrl.split("?")[1].length > 1;
             
-            // 2. CHECK SESSION STORAGE (Prevents Re-Use / Refresh)
-            const sessionUsed = sessionStorage.getItem('dp_key_session_v9');
+            // 2. CHECK SESSION STORAGE
+            const sessionUsed = sessionStorage.getItem('dp_key_session_v10');
 
-            // --- VALIDATION LOGIC ---
+            // --- STRICT VALIDATION ---
 
-            // A. Check if user already used this tab
+            // A. Check if user already used this tab (Prevents Refresh Abuse)
             if (sessionUsed) {
-                logSystem("ERR: Session token expired.");
-                denyAccess("ALREADY_GENERATED");
+                logSystem("ERR: Session ID already consumed.");
+                denyAccess("REFRESH_DETECTED");
                 return;
             }
 
-            // B. CHECK FOR ANY TOKEN (Universal Fix)
-            // If the URL has NO query parameters (length < 2), it's a direct link -> Block it.
-            // If it HAS parameters (like ?DC-AIW8A or ?auth=...), we accept it as coming from ShortX.
-            if (!queryString || queryString.length < 2) {
-                logSystem("ERR: Missing handshake signature.");
-                logSystem("WARN: Direct access detected.");
-                denyAccess("INVALID_LINK");
+            // B. CHECK FOR PARAMETERS
+            // If the URL is just ".../generator.html", this will be false.
+            if (!hasQueryParams) {
+                logSystem("ERR: No verification token found in URL.");
+                logSystem("WARN: Direct access attempt rejected.");
+                denyAccess("DIRECT_ACCESS_BLOCKED");
                 return;
             }
 
@@ -249,7 +254,7 @@
             }
 
             // 2. MARK SESSION AS USED
-            sessionStorage.setItem('dp_key_session_v9', 'true');
+            sessionStorage.setItem('dp_key_session_v10', 'true');
 
             logSystem("Shortener signature verified.");
             await delay(400);
@@ -314,8 +319,8 @@
             document.getElementById('titleText').style.color = "#ff0055";
             
             let userMsg = "INVALID";
-            if(reason === "ALREADY_GENERATED") userMsg = "SESSION EXPIRED";
-            if(reason === "INVALID_LINK") userMsg = "INVALID LINK";
+            if(reason === "REFRESH_DETECTED") userMsg = "SESSION EXPIRED";
+            if(reason === "DIRECT_ACCESS_BLOCKED") userMsg = "INVALID LINK";
             
             keyDisplay.innerText = userMsg;
             keyDisplay.style.fontSize = "1.2rem";
