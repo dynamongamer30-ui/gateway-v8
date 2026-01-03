@@ -220,50 +220,48 @@
             // 1. GET URL PARAMS
             const params = new URLSearchParams(window.location.search);
             const userAuth = params.get('auth');
+            
+            // 2. CHECK SESSION STORAGE (Prevents Re-Use)
+            const sessionUsed = sessionStorage.getItem('dp_key_session_v8');
 
-            // 2. CHECK REFRESH (Navigation Type)
-            const navEntries = window.performance.getEntriesByType("navigation");
-            const isReload = navEntries.length > 0 && navEntries[0].type === "reload";
+            // --- VALIDATION LOGIC ---
 
-            // 3. CHECK SESSION (Prevents Back Button usage)
-            const sessionActive = sessionStorage.getItem('dp_key_session');
-
-            // --- SECURITY LOGIC ---
-
-            if (isReload) {
-                logSystem("ERR: Reload detected. Dropping connection.");
-                denyAccess("SESSION_EXPIRED");
+            // A. Check if user already used this tab
+            if (sessionUsed) {
+                logSystem("ERR: Session token expired.");
+                denyAccess("ALREADY_GENERATED");
                 return;
             }
 
-            if (userAuth !== REQUIRED_AUTH) {
-                logSystem("ERR: Handshake signature mismatch.");
-                logSystem("WARN: Link does not contain valid token.");
+            // B. Check if Auth Token is correct
+            if (!userAuth || userAuth !== REQUIRED_AUTH) {
+                logSystem("ERR: Invalid or missing signature.");
+                logSystem("WARN: Direct access detected.");
                 denyAccess("INVALID_LINK");
                 return;
             }
 
-            if (sessionActive) {
-                logSystem("ERR: Token already consumed.");
-                denyAccess("TOKEN_USED");
-                return;
+            // --- SUCCESS PATH ---
+            
+            // 1. CLEAN THE URL (ANTI-REFRESH)
+            // We remove the ?auth=... part from the address bar immediately.
+            // If they refresh now, the check above (Step B) will fail because URL is empty.
+            if (window.history.replaceState) {
+                const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+                window.history.replaceState({path: cleanUrl}, '', cleanUrl);
             }
 
-            // --- IF SUCCESS ---
-            
+            // 2. MARK SESSION AS USED
+            sessionStorage.setItem('dp_key_session_v8', 'true');
+
             logSystem("Authenticating user credentials...");
             await delay(600);
             logSystem("Access Granted. Generating Key...");
-            
-            // Mark session as used
-            sessionStorage.setItem('dp_key_session', 'true');
             
             await processKeyGeneration();
         }
 
         async function processKeyGeneration() {
-            const oldKey = localStorage.getItem('dp_active_key');
-            
             // Generate Random Key
             const rnd = Math.random().toString(36).substring(2, 7).toUpperCase();
             const newKey = PREFIX + rnd;
@@ -273,11 +271,6 @@
             
             // Save to Database
             await uploadKey(newKey);
-            
-            // Clean up previous key from DB if it exists (Optional: removes old spam)
-            if (oldKey) {
-                deleteOldKey(oldKey); 
-            }
         }
 
         async function uploadKey(key) {
@@ -305,13 +298,6 @@
             }
         }
 
-        async function deleteOldKey(key) {
-            try {
-                const cleanUrl = DB_URL.endsWith('/') ? DB_URL : DB_URL + '/';
-                fetch(`${cleanUrl}ValidKeys/${key}.json`, { method: 'DELETE' });
-            } catch(e) {}
-        }
-
         function finishSuccess(key) {
             keyDisplay.innerText = key;
             document.getElementById('titleText').innerText = "KEY GENERATED";
@@ -331,9 +317,8 @@
             document.getElementById('titleText').style.color = "#ff0055";
             
             let userMsg = "INVALID";
-            if(reason === "SESSION_EXPIRED") userMsg = "DO NOT REFRESH";
+            if(reason === "ALREADY_GENERATED") userMsg = "SESSION EXPIRED";
             if(reason === "INVALID_LINK") userMsg = "INVALID LINK";
-            if(reason === "TOKEN_USED") userMsg = "ALREADY USED";
             
             keyDisplay.innerText = userMsg;
             keyDisplay.style.fontSize = "1.2rem";
@@ -347,7 +332,7 @@
 
         function copyKey() {
             const txt = keyDisplay.innerText;
-            if(txt.length < 5 || txt.includes("INVALID") || txt.includes("REFRESH") || txt.includes("USED") || txt.includes("...")) return;
+            if(txt.length < 5 || txt.includes("INVALID") || txt.includes("SESSION") || txt.includes("...")) return;
             
             const ta = document.createElement("textarea");
             ta.value = txt; ta.style.position = "fixed"; ta.style.left = "-9999px";
