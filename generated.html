@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Secure Gateway | Dynamon Gamer</title>
+    <meta name="theme-color" content="#000000">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* --- STYLING --- */
+        :root {
+            --bg-color: #050508;
+            --card-bg: rgba(20, 25, 35, 0.85);
+            --border: rgba(255, 255, 255, 0.08);
+            --accent: #00ff9d; 
+            --danger: #ff0055;
+            --text-main: #ffffff;
+            --text-muted: #8b949e;
+            --shadow: 0 10px 40px rgba(0, 255, 157, 0.1);
+            --glass: blur(12px) saturate(180%);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; outline: none; -webkit-tap-highlight-color: transparent; }
+        
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        #bgCanvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+
+        /* OVERLAY FOR AUDIO PERMISSION */
+        #startOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 9999;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: opacity 0.5s;
+        }
+        .start-btn {
+            border: 1px solid var(--accent);
+            padding: 15px 40px;
+            border-radius: 30px;
+            color: var(--accent);
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: bold;
+            background: rgba(0, 255, 157, 0.1);
+            box-shadow: 0 0 20px rgba(0, 255, 157, 0.2);
+            animation: pulse 2s infinite;
+        }
+
+        header {
+            padding: 15px 25px;
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: var(--glass);
+            background: rgba(5, 5, 8, 0.6);
+            z-index: 10;
+            position: sticky; top: 0;
+        }
+        .brand { font-family: 'JetBrains Mono', monospace; font-weight: 700; letter-spacing: -0.5px; font-size: 1rem; display: flex; align-items: center; gap: 10px; }
+        .secure-badge { background: rgba(0, 255, 157, 0.05); color: var(--accent); padding: 5px 10px; border-radius: 4px; border: 1px solid rgba(0, 255, 157, 0.2); font-size: 0.6rem; font-weight: 700; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px; }
+
+        .main-container { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; position: relative; width: 100%; opacity: 0; transition: opacity 1s;}
+
+        .security-card {
+            width: 100%; max-width: 450px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 35px 25px;
+            text-align: center;
+            box-shadow: var(--shadow);
+            backdrop-filter: var(--glass);
+            position: relative;
+            overflow: hidden;
+        }
+        .security-card::before { content:''; position: absolute; top:0; left:0; width:100%; height:2px; background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: scan 3s infinite linear; }
+
+        h2 { font-size: 1.4rem; margin-bottom: 8px; font-weight: 700; color: #fff; letter-spacing: -0.5px; }
+        .sub-text { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 30px; font-family: 'JetBrains Mono', monospace; }
+
+        .key-wrapper {
+            background: rgba(0, 0, 0, 0.4); border: 1px dashed rgba(255, 255, 255, 0.15); border-radius: 12px; padding: 22px; margin-bottom: 25px; position: relative; cursor: pointer; transition: all 0.25s ease; display: flex; align-items: center; justify-content: center; min-height: 80px;
+        }
+        .key-wrapper:active { transform: scale(0.98); background: rgba(0, 255, 157, 0.05); border-color: var(--accent); }
+        .key-output { font-family: 'JetBrains Mono', monospace; font-size: 1.5rem; color: var(--accent); font-weight: 700; letter-spacing: 2px; text-shadow: 0 0 20px rgba(0, 255, 157, 0.2); }
+
+        .btn-generate { width: 100%; padding: 16px; background: var(--accent); color: #000; border: none; border-radius: 14px; font-size: 0.95rem; font-weight: 800; letter-spacing: 0.5px; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 5px 20px rgba(0, 255, 157, 0.15); display: flex; align-items: center; justify-content: center; gap: 10px; text-transform: uppercase; }
+        .btn-generate:active { transform: translateY(2px); }
+
+        .social-label { font-size: 0.65rem; color: var(--text-muted); margin-top: 25px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 10px; display: block; }
+        .social-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+        .social-btn { background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-radius: 12px; height: 50px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 1.3rem; transition: all 0.3s; text-decoration: none; }
+        .social-btn:hover { color: #fff; transform: translateY(-3px); }
+        .yt:hover { background: rgba(255, 0, 0, 0.1); border-color: #ff0000; }
+        .tg:hover { background: rgba(0, 136, 204, 0.1); border-color: #0088cc; }
+        .wa:hover { background: rgba(37, 211, 102, 0.1); border-color: #25d366; }
+
+        .admin-link { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 20px; color: var(--text-muted); font-size: 0.85rem; text-decoration: none; padding: 12px; border-radius: 10px; border: 1px solid transparent; transition: 0.3s; background: rgba(255,255,255,0.01); }
+        .admin-link:hover { border-color: var(--accent); background: rgba(0, 255, 157, 0.05); color: var(--accent); }
+
+        .terminal { margin-top: 25px; width: 100%; max-width: 450px; background: #08080a; border: 1px solid #1f1f24; border-radius: 12px; padding: 15px 20px; font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: #4af626; height: 140px; overflow: hidden; text-align: left; opacity: 0.9; display: flex; flex-direction: column; justify-content: flex-end; box-shadow: 0 5px 20px rgba(0,0,0,0.3); }
+        .term-line { margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.8; }
+        .term-cursor { display: inline-block; width: 6px; height: 12px; background: #4af626; animation: blink 1s infinite; vertical-align: middle; margin-left: 2px; }
+
+        #toast { position: fixed; top: 30px; left: 50%; transform: translateX(-50%) translateY(-100px); background: rgba(15, 15, 20, 0.95); border: 1px solid var(--accent); padding: 14px 35px; border-radius: 50px; color: #fff; font-weight: 600; z-index: 200; transition: 0.5s; display: flex; align-items: center; gap: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); backdrop-filter: blur(10px); font-size: 0.9rem; }
+        #toast.show { transform: translateX(-50%) translateY(0); }
+
+        .loader { display: inline-block; width: 24px; height: 24px; border: 2px solid rgba(255, 255, 255, 0.1); border-left-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes blink { 50% { opacity: 0; } }
+        @keyframes scan { 0% {top:0; opacity: 0.5;} 50% {top:100%; opacity: 0.2;} 100% {top:0; opacity: 0.5;} }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+        
+        .access-denied { border-color: var(--danger) !important; animation: shake 0.5s ease; }
+        .access-denied .key-output { color: var(--danger) !important; text-shadow: 0 0 15px rgba(255,0,85,0.4); }
+        .access-denied::before { background: var(--danger) !important; box-shadow: 0 0 20px var(--danger); }
+        @keyframes shake { 0%, 100% {transform: translateX(0);} 25% {transform: translateX(-6px);} 75% {transform: translateX(6px);} }
+        .social-grid, .admin-link, .btn-generate { opacity: 1; transition: opacity 0.3s; }
+        .access-denied .social-grid, .access-denied .admin-link, .access-denied .btn-generate { opacity: 0.3; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+    <canvas id="bgCanvas"></canvas>
+
+    <!-- START OVERLAY -->
+    <div id="startOverlay" onclick="startSystem()">
+        <div style="font-size: 3rem; margin-bottom: 20px; color: var(--accent);"><i class="fas fa-fingerprint"></i></div>
+        <div class="start-btn">INITIALIZE SYSTEM</div>
+        <div style="margin-top: 15px; font-size: 0.7rem; color: #666;">TAP TO SECURE CONNECTION</div>
+    </div>
+
+    <header>
+        <div class="brand"><i class="fas fa-shield-alt" style="color:var(--accent)"></i> Dynamon Gamer Gateway</div>
+        <div class="secure-badge"><i class="fas fa-lock"></i> SSL ENCRYPTED</div>
+    </header>
+
+    <div class="main-container" id="mainContainer">
+        
+        <div class="security-card" id="mainCard">
+            <h2 id="titleText">GENERATING KEY</h2>
+            <div class="sub-text" id="statusText">System Initializing...</div>
+
+            <div class="key-wrapper" id="keyWrapper" onclick="copyKey()">
+                <div class="key-output" id="displayedKey"><span class="loader"></span></div>
+            </div>
+
+            <button class="btn-generate" onclick="copyKey()"><i class="far fa-copy"></i> COPY ACCESS KEY</button>
+
+            <span class="social-label">Join Our Community</span>
+            <div class="social-grid">
+                <a href="https://youtube.com/@dynamongamer07" target="_blank" class="social-btn yt"><i class="fab fa-youtube"></i></a>
+                <a href="https://t.me/dynamonsworld07" target="_blank" class="social-btn tg"><i class="fab fa-telegram-plane"></i></a>
+                <a href="https://whatsapp.com/channel/0029VbBdAcZ05MUmgk8cQP05" target="_blank" class="social-btn wa"><i class="fab fa-whatsapp"></i></a>
+            </div>
+
+            <a href="http://t.me/ASTAMODS07" target="_blank" class="admin-link"><i class="fas fa-headset"></i> Contact Admin Support</a>
+        </div>
+
+        <div class="terminal" id="terminalLog">
+            <div class="term-line">> Initializing Dynamon Gamer v8.1 protocol...</div>
+            <div class="term-line">> Waiting for user interaction...</div>
+            <div class="term-cursor"></div>
+        </div>
+
+    </div>
+
+    <div id="toast"><i class="fas fa-check-circle" style="color:var(--accent)"></i> <span>Copied to Clipboard!</span></div>
+
+    <script>
+        // ===============================================
+        // CONFIGURATION
+        // ===============================================
+        
+        // This is "dynamon_gamer_is_best" encoded in Base64
+        const REQUIRED_AUTH = "ZHluYW1vbl9nYW1lcl9pc19iZXN0"; 
+
+        // Database URL
+        const DB_URL = "https://gateway-260ec-default-rtdb.firebaseio.com/";
+        const PREFIX = "DP-";
+        
+        const LOGS = document.getElementById('terminalLog');
+        const keyDisplay = document.getElementById('displayedKey');
+        const statusText = document.getElementById('statusText');
+        const mainCard = document.getElementById('mainCard');
+        
+        let audioEnabled = false;
+
+        async function startSystem() {
+            const overlay = document.getElementById('startOverlay');
+            overlay.style.opacity = '0';
+            setTimeout(() => overlay.style.display = 'none', 500);
+            document.getElementById('mainContainer').style.opacity = '1';
+
+            if ('speechSynthesis' in window) {
+                audioEnabled = true;
+                window.speechSynthesis.resume();
+            }
+
+            initParticles();
+            runSecurityChecks();
+        }
+
+        async function runSecurityChecks() {
+            logSystem("Connection established with host.");
+            await delay(500);
+
+            // 1. GET URL PARAMS
+            const params = new URLSearchParams(window.location.search);
+            const userAuth = params.get('auth');
+            
+            // 2. CHECK SESSION STORAGE (Prevents Re-Use)
+            const sessionUsed = sessionStorage.getItem('dp_key_session_v8');
+
+            // --- VALIDATION LOGIC ---
+
+            // A. Check if user already used this tab
+            if (sessionUsed) {
+                logSystem("ERR: Session token expired.");
+                denyAccess("ALREADY_GENERATED");
+                return;
+            }
+
+            // B. Check if Auth Token is correct
+            if (!userAuth || userAuth !== REQUIRED_AUTH) {
+                logSystem("ERR: Invalid or missing signature.");
+                logSystem("WARN: Direct access detected.");
+                denyAccess("INVALID_LINK");
+                return;
+            }
+
+            // --- SUCCESS PATH ---
+            
+            // 1. CLEAN THE URL (ANTI-REFRESH)
+            // We remove the ?auth=... part from the address bar immediately.
+            // If they refresh now, the check above (Step B) will fail because URL is empty.
+            if (window.history.replaceState) {
+                const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+                window.history.replaceState({path: cleanUrl}, '', cleanUrl);
+            }
+
+            // 2. MARK SESSION AS USED
+            sessionStorage.setItem('dp_key_session_v8', 'true');
+
+            logSystem("Authenticating user credentials...");
+            await delay(600);
+            logSystem("Access Granted. Generating Key...");
+            
+            await processKeyGeneration();
+        }
+
+        async function processKeyGeneration() {
+            // Generate Random Key
+            const rnd = Math.random().toString(36).substring(2, 7).toUpperCase();
+            const newKey = PREFIX + rnd;
+            
+            logSystem(`Generating new encryption token...`);
+            await delay(600);
+            
+            // Save to Database
+            await uploadKey(newKey);
+        }
+
+        async function uploadKey(key) {
+            try {
+                logSystem("Handshaking with firebase database node...");
+                const cleanUrl = DB_URL.endsWith('/') ? DB_URL : DB_URL + '/';
+                const target = `${cleanUrl}ValidKeys/${key}.json`;
+                
+                // Key Valid for 24 Hours
+                const keyData = { "Hours": 24 };
+
+                await fetch(target, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(keyData)
+                });
+
+                finishSuccess(key);
+
+            } catch(e) {
+                console.error(e);
+                keyDisplay.innerText = "NET_ERROR";
+                statusText.innerText = "Connection Failed";
+                logSystem("CRITICAL FAILURE: Database unreachable");
+            }
+        }
+
+        function finishSuccess(key) {
+            keyDisplay.innerText = key;
+            document.getElementById('titleText').innerText = "KEY GENERATED";
+            statusText.innerText = "Your session is fully authenticated.";
+            statusText.style.color = "#00ff9d";
+            logSystem(`TOKEN REGISTERED: ${key}`);
+            logSystem("Ready for user input.");
+            localStorage.setItem('dp_active_key', key);
+            
+            speakSystem("Key generated successfully");
+            showToast();
+        }
+
+        function denyAccess(reason) {
+            mainCard.classList.add('access-denied');
+            document.getElementById('titleText').innerText = "ACCESS DENIED";
+            document.getElementById('titleText').style.color = "#ff0055";
+            
+            let userMsg = "INVALID";
+            if(reason === "ALREADY_GENERATED") userMsg = "SESSION EXPIRED";
+            if(reason === "INVALID_LINK") userMsg = "INVALID LINK";
+            
+            keyDisplay.innerText = userMsg;
+            keyDisplay.style.fontSize = "1.2rem";
+            
+            statusText.innerText = `Security Flag: ${reason}`;
+            statusText.style.color = "#ff0055";
+            logSystem(`SECURITY ALERT: ${reason}`);
+            logSystem("Terminating session connection...");
+            speakSystem("Access denied");
+        }
+
+        function copyKey() {
+            const txt = keyDisplay.innerText;
+            if(txt.length < 5 || txt.includes("INVALID") || txt.includes("SESSION") || txt.includes("...")) return;
+            
+            const ta = document.createElement("textarea");
+            ta.value = txt; ta.style.position = "fixed"; ta.style.left = "-9999px";
+            document.body.appendChild(ta); ta.focus(); ta.select();
+            try { 
+                document.execCommand('copy'); 
+                showToast(); 
+                logSystem("Key copied to system clipboard."); 
+            } catch (err) { alert("Manual Copy: " + txt); }
+            document.body.removeChild(ta);
+        }
+
+        function speakSystem(text) {
+            if ('speechSynthesis' in window) {
+                const synth = window.speechSynthesis;
+                synth.cancel();
+                let voices = synth.getVoices();
+                const ut = new SpeechSynthesisUtterance(text);
+                const targetVoice = voices.find(v => v.name.includes("English") && v.name.includes("Female"));
+                if(targetVoice) ut.voice = targetVoice;
+                ut.rate = 0.9; ut.pitch = 1.1; ut.volume = 1;
+                synth.speak(ut);
+            }
+        }
+
+        function showToast() { const t = document.getElementById('toast'); t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2000); }
+        function logSystem(msg) { const line = document.createElement('div'); line.className = 'term-line'; line.innerHTML = `> ${msg}`; LOGS.insertBefore(line, LOGS.lastElementChild); LOGS.scrollTop = LOGS.scrollHeight; }
+        const delay = ms => new Promise(res => setTimeout(res, ms));
+
+        function initParticles() {
+            const canvas = document.getElementById('bgCanvas'); const ctx = canvas.getContext('2d'); let particles = [];
+            const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
+            window.addEventListener('resize', resize); resize();
+            for(let i=0; i<40; i++) { particles.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, vx: (Math.random() - 0.5) * 0.5, vy: (Math.random() - 0.5) * 0.5, size: Math.random() * 2 }); }
+            function animate() {
+                ctx.fillStyle = 'rgba(5, 5, 8, 0.2)'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = '#00ff9d';
+                particles.forEach(p => { p.x += p.vx; p.y += p.vy; if(p.x < 0 || p.x > canvas.width) p.vx *= -1; if(p.y < 0 || p.y > canvas.height) p.vy *= -1; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill(); });
+                requestAnimationFrame(animate);
+            } animate();
+        }
+    </script>
+</body>
+</html>
