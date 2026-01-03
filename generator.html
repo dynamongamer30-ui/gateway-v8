@@ -1,3 +1,5 @@
+<!-- START OF FILE generator.html -->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -310,7 +312,12 @@
             localStorage.setItem('dp_active_key', key);
             
             speakSystem("Key generated successfully");
-            showToast();
+            
+            // --- MODIFIED HERE: AUTO COPY TRIGGER ---
+            // Trigger the copy function immediately upon success
+            setTimeout(() => {
+                copyKey();
+            }, 200);
         }
 
         function denyAccess(reason) {
